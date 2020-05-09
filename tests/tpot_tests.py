@@ -47,11 +47,13 @@ import random
 import warnings
 from multiprocessing import cpu_count
 import os
+import sys
 from re import search
 from datetime import datetime
 from time import sleep
 from tempfile import mkdtemp
 from shutil import rmtree
+import platform
 
 from sklearn.datasets import load_digits, load_boston, make_classification
 from sklearn import model_selection
@@ -155,7 +157,8 @@ def test_init_custom_parameters():
         verbosity=1,
         random_state=42,
         disable_update_check=True,
-        warm_start=True
+        warm_start=True,
+        log_file=None
     )
 
     assert tpot_obj.population_size == 500
@@ -168,6 +171,7 @@ def test_init_custom_parameters():
     assert tpot_obj.max_time_mins is None
     assert tpot_obj.warm_start is True
     assert tpot_obj.verbosity == 1
+    assert tpot_obj.log_file == None
 
     tpot_obj._fit_init()
 
@@ -179,7 +183,14 @@ def test_init_custom_parameters():
     assert tpot_obj._optimized_pipeline_score == None
     assert tpot_obj.fitted_pipeline_ == None
     assert tpot_obj._exported_pipeline_text == []
+    assert tpot_obj.log_file == sys.stdout
 
+def test_init_custom_progress_file():
+    """ Assert that TPOT has right file handler to save progress. """
+    file_name = "progress.txt"
+    file_handle = open(file_name, "w")
+    tpot_obj = TPOTClassifier(log_file=file_handle)
+    assert tpot_obj.log_file == file_handle
 
 def test_init_default_scoring():
     """Assert that TPOT intitializes with the correct default scoring function."""
@@ -617,7 +628,12 @@ def test_score_3():
 
     # Get score from TPOT
     score = tpot_obj.score(testing_features_r, testing_target_r)
-    assert np.allclose(known_score, score)
+    # On some non-amd64 systems such as arm64, a resulting score of
+    # 0.8207525232725118 was observed, so we need to add a tolerance there
+    if platform.machine() != 'amd64':
+        assert np.allclose(known_score, score, rtol=0.03)
+    else:
+        assert np.allclose(known_score, score)
 
 
 def test_sample_weight_func():
@@ -665,7 +681,12 @@ def test_sample_weight_func():
 
     assert np.allclose(cv_score1, cv_score2)
     assert not np.allclose(cv_score1, cv_score_weight)
-    assert np.allclose(known_score, score)
+    # On some non-amd64 systems such as arm64, a resulting score of
+    # 0.8207525232725118 was observed, so we need to add a tolerance there
+    if platform.machine() != 'amd64':
+        assert np.allclose(known_score, score, rtol=0.01)
+    else:
+        assert np.allclose(known_score, score)
 
 
 def test_template_1():
@@ -1196,7 +1217,7 @@ def test_check_periodic_pipeline():
     )
     tpot_obj.fit(training_features, training_target)
     with closing(StringIO()) as our_file:
-        tpot_obj._file = our_file
+        tpot_obj.log_file = our_file
         tpot_obj.verbosity = 3
         tpot_obj._last_pipeline_write = datetime.now()
         sleep(0.11)
@@ -1240,7 +1261,7 @@ def test_save_periodic_pipeline():
     )
     tpot_obj.fit(training_features, training_target)
     with closing(StringIO()) as our_file:
-        tpot_obj._file = our_file
+        tpot_obj.log_file = our_file
         tpot_obj.verbosity = 3
         tpot_obj._last_pipeline_write = datetime.now()
         sleep(0.11)
@@ -1270,7 +1291,7 @@ def test_save_periodic_pipeline_2():
     )
     tpot_obj.fit(training_features, training_target)
     with closing(StringIO()) as our_file:
-        tpot_obj._file = our_file
+        tpot_obj.log_file = our_file
         tpot_obj.verbosity = 3
         tpot_obj._last_pipeline_write = datetime.now()
         sleep(0.11)
@@ -1301,7 +1322,7 @@ def test_check_periodic_pipeline_3():
     )
     tpot_obj.fit(training_features, training_target)
     with closing(StringIO()) as our_file:
-        tpot_obj._file = our_file
+        tpot_obj.log_file = our_file
         tpot_obj.verbosity = 3
         tpot_obj._exported_pipeline_text = []
         tpot_obj._last_pipeline_write = datetime.now()
@@ -1544,7 +1565,7 @@ def test_update_pbar():
     # reset verbosity = 3 for checking pbar message
     tpot_obj.verbosity = 3
     with closing(StringIO()) as our_file:
-        tpot_obj._file=our_file
+        tpot_obj.log_file=our_file
         tpot_obj._pbar = tqdm(total=10, disable=False, file=our_file)
         tpot_obj._update_pbar(pbar_num=2, pbar_msg="Test Warning Message")
         our_file.seek(0)
@@ -1563,7 +1584,7 @@ def test_update_val():
     # reset verbosity = 3 for checking pbar message
     tpot_obj.verbosity = 3
     with closing(StringIO()) as our_file:
-        tpot_obj._file=our_file
+        tpot_obj.log_file=our_file
         tpot_obj._pbar = tqdm(total=10, disable=False, file=our_file)
         result_score_list = []
         result_score_list = tpot_obj._update_val(0.9999, result_score_list)
@@ -1610,7 +1631,7 @@ def test_preprocess_individuals():
     # reset verbosity = 3 for checking pbar message
     tpot_obj.verbosity = 3
     with closing(StringIO()) as our_file:
-        tpot_obj._file=our_file
+        tpot_obj.log_file=our_file
         tpot_obj._pbar = tqdm(total=2, disable=False, file=our_file)
         operator_counts, eval_individuals_str, sklearn_pipeline_list, stats_dicts = \
                                 tpot_obj._preprocess_individuals(individuals)
@@ -1656,7 +1677,7 @@ def test_preprocess_individuals_2():
     # reset verbosity = 3 for checking pbar message
     tpot_obj.verbosity = 3
     with closing(StringIO()) as our_file:
-        tpot_obj._file=our_file
+        tpot_obj.log_file=our_file
         tpot_obj._pbar = tqdm(total=3, disable=False, file=our_file)
         operator_counts, eval_individuals_str, sklearn_pipeline_list, stats_dicts = \
                                 tpot_obj._preprocess_individuals(individuals)
@@ -1703,7 +1724,7 @@ def test_preprocess_individuals_3():
     # reset verbosity = 3 for checking pbar message
 
     with closing(StringIO()) as our_file:
-        tpot_obj._file=our_file
+        tpot_obj.log_file=our_file
         tpot_obj._lambda=4
         tpot_obj._pbar = tqdm(total=2, disable=False, file=our_file)
         tpot_obj._pbar.n = 2
