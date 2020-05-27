@@ -269,6 +269,7 @@ class TPOTBase(BaseEstimator):
         self.disable_update_check = disable_update_check
         self.random_state = random_state
         self.log_file = log_file
+        self.include_stacking_estimator = True
 
 
     def _setup_template(self, template):
@@ -553,10 +554,11 @@ class TPOTBase(BaseEstimator):
             self.operators_context = {
                 'make_pipeline': make_pipeline,
                 'make_union': make_union,
-                'StackingEstimator': StackingEstimator,
                 'FunctionTransformer': FunctionTransformer,
                 'copy': copy
             }
+            if self.include_stacking_estimator:
+                self.operators_context['StackingEstimator'] = StackingEstimator
             self._setup_pset()
             self._setup_toolbox()
             # Dictionary of individuals that have already been evaluated in previous
