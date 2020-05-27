@@ -55,7 +55,7 @@ from tempfile import mkdtemp
 from shutil import rmtree
 import platform
 
-from sklearn.datasets import load_digits, load_boston, make_classification
+from sklearn.datasets import load_digits, load_boston, make_classification, make_regression
 from sklearn import model_selection
 from joblib import Memory
 from sklearn.metrics import make_scorer, roc_auc_score
@@ -104,7 +104,16 @@ training_features_r, testing_features_r, training_target_r, testing_target_r = \
 
 # Set up a small test dataset
 
-pretest_X, pretest_y = make_classification(n_samples=100, n_features=10, random_state=42)
+pretest_X, pretest_y = make_classification(
+                                            n_samples=100,
+                                            n_features=10,
+                                            random_state=42)
+
+pretest_X_reg, pretest_y_reg = make_regression(
+                                            n_samples=100,
+                                            n_features=10,
+                                            random_state=42
+                                            )
 
 # Set up artificial groups
 n_datapoints = pretest_y.shape[0]
@@ -1085,6 +1094,21 @@ def test_fit_6():
     assert not (tpot_obj._start_datetime is None)
 
 
+def test_fit_7():
+    """Assert that the TPOT fit function provides an optimized pipeline."""
+    tpot_obj = TPOTRegressor(
+        random_state=42,
+        population_size=1,
+        offspring_size=2,
+        generations=1,
+        verbosity=0
+    )
+    tpot_obj.fit(pretest_X_reg, pretest_y_reg)
+
+    assert isinstance(tpot_obj._optimized_pipeline, creator.Individual)
+    assert not (tpot_obj._start_datetime is None)
+
+
 def test_memory():
     """Assert that the TPOT fit function runs normally with memory=\'auto\'."""
     tpot_obj = TPOTClassifier(
@@ -1450,7 +1474,7 @@ def test_evaluated_individuals_():
         try:
             cv_scores = model_selection.cross_val_score(sklearn_pipeline, training_features, training_target, cv=5, scoring='accuracy', verbose=0)
             mean_cv_scores = np.mean(cv_scores)
-        except Exception as e:
+        except Exception:
             mean_cv_scores = -float('inf')
         assert np.allclose(tpot_obj.evaluated_individuals_[pipeline_string]['internal_cv_score'], mean_cv_scores)
         assert np.allclose(tpot_obj.evaluated_individuals_[pipeline_string]['operator_count'], operator_count)
@@ -1504,7 +1528,7 @@ def test_evaluate_individuals():
                                                             verbose=0,
                                                             error_score='raise')
             mean_cv_scores = np.mean(cv_scores)
-        except Exception as e:
+        except Exception:
             mean_cv_scores = -float('inf')
 
         assert isinstance(deap_pipeline, creator.Individual)
@@ -1546,7 +1570,7 @@ def test_evaluate_individuals_2():
                                                             verbose=0,
                                                             error_score='raise')
             mean_cv_scores = np.mean(cv_scores)
-        except Exception as e:
+        except Exception:
             mean_cv_scores = -float('inf')
 
         assert isinstance(deap_pipeline, creator.Individual)
@@ -1633,7 +1657,7 @@ def test_preprocess_individuals():
     with closing(StringIO()) as our_file:
         tpot_obj.log_file=our_file
         tpot_obj._pbar = tqdm(total=2, disable=False, file=our_file)
-        operator_counts, eval_individuals_str, sklearn_pipeline_list, stats_dicts = \
+        operator_counts, eval_individuals_str, sklearn_pipeline_list, _ = \
                                 tpot_obj._preprocess_individuals(individuals)
         our_file.seek(0)
         assert_in("Pipeline encountered that has previously been evaluated", our_file.read())
@@ -1679,7 +1703,7 @@ def test_preprocess_individuals_2():
     with closing(StringIO()) as our_file:
         tpot_obj.log_file=our_file
         tpot_obj._pbar = tqdm(total=3, disable=False, file=our_file)
-        operator_counts, eval_individuals_str, sklearn_pipeline_list, stats_dicts = \
+        operator_counts, eval_individuals_str, sklearn_pipeline_list, _ = \
                                 tpot_obj._preprocess_individuals(individuals)
         our_file.seek(0)
 
@@ -1728,10 +1752,28 @@ def test_preprocess_individuals_3():
         tpot_obj._lambda=4
         tpot_obj._pbar = tqdm(total=2, disable=False, file=our_file)
         tpot_obj._pbar.n = 2
-        operator_counts, eval_individuals_str, sklearn_pipeline_list, stats_dicts = \
+        _, _, _, _ = \
                                 tpot_obj._preprocess_individuals(individuals)
         assert tpot_obj._pbar.total == 6
 
+def test__init_pretest():
+    """Assert that the init_pretest function produces a sample with all labels"""
+    tpot_obj = TPOTClassifier(
+        random_state=42,
+        population_size=1,
+        offspring_size=2,
+        generations=1,
+        verbosity=0,
+        config_dict='TPOT light'
+    )
+    tpot_obj._fit_init()
+
+    np.random.seed(seed=42)
+    features = np.random.rand(10000,2)
+    target = np.random.binomial(1,0.01,(10000,1))
+
+    tpot_obj._init_pretest(features, target)
+    assert(np.unique(tpot_obj.pretest_y).size == np.unique(target).size)
 
 def test_check_dataset():
     """Assert that the check_dataset function returns feature and target as expected."""
@@ -1762,7 +1804,7 @@ def test_check_dataset_2():
     )
     tpot_obj._fit_init()
     test_sample_weight = list(range(1, len(training_target)+1))
-    ret_features, ret_target = tpot_obj._check_dataset(training_features, training_target, test_sample_weight)
+    _, _ = tpot_obj._check_dataset(training_features, training_target, test_sample_weight)
     test_sample_weight[0] = 'opps'
 
     assert_raises(ValueError, tpot_obj._check_dataset, training_features, training_target, test_sample_weight)
@@ -1780,7 +1822,7 @@ def test_check_dataset_3():
     )
     tpot_obj._fit_init()
     test_sample_weight = list(range(1, len(training_target)+1))
-    ret_features, ret_target = tpot_obj._check_dataset(training_features, training_target, test_sample_weight)
+    _, _ = tpot_obj._check_dataset(training_features, training_target, test_sample_weight)
     test_sample_weight[0] = np.nan
 
     assert_raises(ValueError, tpot_obj._check_dataset, training_features, training_target, test_sample_weight)
@@ -2151,7 +2193,7 @@ def test_mate_operator():
     tpot_obj.evaluated_individuals_[str(ind1)] = (2, 0.99)
     tpot_obj.evaluated_individuals_[str(ind2)] = (2, 0.99)
 
-    offspring1, offspring2 = tpot_obj._mate_operator(ind1, ind2)
+    offspring1, _ = tpot_obj._mate_operator(ind1, ind2)
     expected_offspring1 = (
         'KNeighborsClassifier('
         'BernoulliNB(input_matrix, BernoulliNB__alpha=10.0, BernoulliNB__fit_prior=False), '
